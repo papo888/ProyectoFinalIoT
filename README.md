@@ -35,6 +35,28 @@ README.md
 
 ---
 
+Aquí tienes **dos párrafos bien escritos**, claros, profesionales y listos para poner en tu README, explicando:
+
+✔ cómo usó el proyecto la memoria del ESP32
+✔ qué librerías utilizaste y para qué
+
+---
+
+# Uso de la memoria en el ESP32
+
+El sistema usa de manera eficiente la memoria del ESP32, distribuyendo la carga entre la **RAM**, la **Flash** y las estructuras dinámicas del programa. El uso intensivo de WiFi, MQTT con TLS y el servidor HTTP obliga a gestionar cuidadosamente la memoria dinámica, especialmente la del heap. Los certificados TLS (almacenados en `root_ca.h`) se cargan en **Flash**, lo cual evita saturar la RAM al mantenerlos permanentemente accesibles sin ocupar espacio durante la ejecución. Las estructuras relacionadas con el movimiento (como el estado del motor, telemetría y buffers MQTT) se mantienen en RAM en objetos pequeños y livianos. Además, se evita crear strings gigantes o procesamientos pesados en cada loop para no fragmentar la memoria y asegurar un funcionamiento estable incluso con telemetría continua cada segundo.
+
+También se manejó la memoria del sensor mediante lectura directa y cálculo puntual —sin almacenar historiales extensos— y en la interfaz web se controló el tamaño máximo del historial de puntos del radar para evitar un crecimiento ilimitado que pudiera generar cuelgues o ralentizaciones. Gracias al uso de PWM por hardware, WiFiClientSecure y PubSubClient, la mayor parte del procesamiento crítico se delega a módulos muy optimizados del SDK del ESP32, permitiendo que el consumo de memoria se mantenga bajo, estable y sin sobrecargas incluso durante conexiones TLS cifradas o peticiones simultáneas por la API.
+
+---
+
+# Librerías utilizadas
+
+Para el funcionamiento completo del sistema se utilizaron varias librerías clave del entorno Arduino para ESP32. **WiFi.h** permite gestionar la conexión a redes inalámbricas en modo estación. **WebServer.h** implementa el servidor REST que expone los endpoints `/api/v1/healthcheck` y `/api/v1/move`. Para la comunicación segura se usó **WiFiClientSecure**, responsable de manejar el cifrado TLS y validar certificados con el CA almacenado en `root_ca.h`. La comunicación MQTT se implementó con **PubSubClient**, encargada de publicar telemetría y recibir comandos, funcionando encima del cliente TLS para garantizar seguridad extremo a extremo. Para el control de motores se empleó la API nativa `ledcSetup()` y `ledcWrite()` del ESP32, la cual usa canales de PWM por hardware, más estables y precisos.
+
+El sensor ultrasónico se controló con funciones propias (`sensor.h` y `sensor.cpp`), pero apoyándose en primitivas de **Arduino.h** para lectura digital y temporización. Finalmente, en la interfaz web se usaron tecnologías estándar: HTML, TailwindCSS, Canvas 2D para el radar y WebSockets MQTT sobre `wss://` desde el navegador para graficar telemetría en tiempo real. Todo el stack fue elegido para ser liviano, compatible y altamente eficiente en entornos embebidos y web.
+
+
 # **2. Requisitos**
 
 ## Hardware
@@ -245,21 +267,60 @@ En `settings.h`:
 
 ---
 
-# 🔍 **9. Troubleshooting**
+# Problemas Encontrados
 
-### El carro no se mueve, pero acepta comandos
+Durante el desarrollo e integración del sistema se presentaron varios retos técnicos que requirieron ajustes tanto en hardware como en software:
 
-* Revisa GND común entre ESP32 y L298N.
-* Revisa conexión batería → +12V y GND.
-* Verifica que el jumper 5V-EN esté puesto.
+### **1. Motores no se movían aunque el backend aceptaba los comandos**
 
-### El driver hace PITIDO
-
-* Frecuencia PWM estaba demasiado alta → corregido a 1000Hz.
-
-### Motores vibran pero no avanzan
-
-* Las pilas AA están débiles.
-* Usa pilas nuevas o recargables NiMH.
+* La API REST retornaba `202 accepted`, pero el carro no avanzaba.
+* Causa: los pines configurados no coincidían con el cableado real del L298N.
+* Solución: corregir los pines en `settings.h` y verificar voltajes del driver.
 
 ---
+
+### **2. Pitido del L298N y motores sin fuerza**
+
+* El L298N emitía un *beep* sin girar los motores.
+* Causa: insuficiente corriente → 2 pilas AA no entregan la corriente requerida.
+* Solución: usar **4 pilas AA nuevas**, o preferiblemente un pack 18650.
+
+---
+
+### **3. Sensor ultrasónico devolvía valores incorrectos (≈ 20 cm siempre)**
+
+* Incluso acercando la mano, no habían variaciones.
+* Causas detectadas:
+
+  * El ECHO del HC-SR04 estaba a 5V → ESP32 solo admite 3.3V.
+  * El divisor resistivo estaba mal conectado o con valores incorrectos.
+  * El sensor estaba inclinado o vibrando sobre el chasis.
+* Solución: rehacer el divisor resistivo con valores correctos **10k + 15k**, asegurar conexiones y soldar cables flojos.
+---
+
+# Mejoras a Futuro
+
+Varias mejoras pueden implementarse para aumentar robustez, escalabilidad y funcionalidad del proyecto:
+
+### **1. Agregar comunicación segura en la API REST**
+
+* Actualmente la API corre en HTTP sin cifrado.
+* Se puede implementar:
+
+  * mbedTLS con certificados locales.
+  * o ESP32 + reverse proxy Nginx en otro dispositivo.
+
+---
+
+### **2. Implementar detección de obstáculos y frenado automático**
+
+* El vehículo puede frenar automáticamente si:
+
+  * `{distance < 20 cm}`
+* Y enviar alertas por MQTT:
+
+  * `"warning: collision imminent"`
+
+---
+
+
