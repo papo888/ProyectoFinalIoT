@@ -4,6 +4,8 @@ Nicolas Clavijo 0000314037
 
 Juan Pablo Parrado 0000291023
 
+Presentación sustentación:https://www.canva.com/design/DAG5kdYOyQo/iVhoR91BbWGHavvMLzh9mg/edit?utm_content=DAG5kdYOyQo&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+
 ## Proyecto: Carro 2WD controlado por ESP32
 
 Incluye:
