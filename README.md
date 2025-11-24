@@ -47,6 +47,8 @@ Aquí tienes **dos párrafos bien escritos**, claros, profesionales y listos par
 El sistema usa de manera eficiente la memoria del ESP32, distribuyendo la carga entre la **RAM**, la **Flash** y las estructuras dinámicas del programa. El uso intensivo de WiFi, MQTT con TLS y el servidor HTTP obliga a gestionar cuidadosamente la memoria dinámica, especialmente la del heap. Los certificados TLS (almacenados en `root_ca.h`) se cargan en **Flash**, lo cual evita saturar la RAM al mantenerlos permanentemente accesibles sin ocupar espacio durante la ejecución. Las estructuras relacionadas con el movimiento (como el estado del motor, telemetría y buffers MQTT) se mantienen en RAM en objetos pequeños y livianos. Además, se evita crear strings gigantes o procesamientos pesados en cada loop para no fragmentar la memoria y asegurar un funcionamiento estable incluso con telemetría continua cada segundo.
 
 También se manejó la memoria del sensor mediante lectura directa y cálculo puntual —sin almacenar historiales extensos— y en la interfaz web se controló el tamaño máximo del historial de puntos del radar para evitar un crecimiento ilimitado que pudiera generar cuelgues o ralentizaciones. Gracias al uso de PWM por hardware, WiFiClientSecure y PubSubClient, la mayor parte del procesamiento crítico se delega a módulos muy optimizados del SDK del ESP32, permitiendo que el consumo de memoria se mantenga bajo, estable y sin sobrecargas incluso durante conexiones TLS cifradas o peticiones simultáneas por la API.
+Dando un total de memoria utilizada:
+Sketch uses 905473 bytes (69%) of program storage space. Maximum is 1310720 bytes.
 
 ---
 
@@ -56,7 +58,10 @@ Para el funcionamiento completo del sistema se utilizaron varias librerías clav
 
 El sensor ultrasónico se controló con funciones propias (`sensor.h` y `sensor.cpp`), pero apoyándose en primitivas de **Arduino.h** para lectura digital y temporización. Finalmente, en la interfaz web se usaron tecnologías estándar: HTML, TailwindCSS, Canvas 2D para el radar y WebSockets MQTT sobre `wss://` desde el navegador para graficar telemetría en tiempo real. Todo el stack fue elegido para ser liviano, compatible y altamente eficiente en entornos embebidos y web.
 
+# **Diagrama**
+* ![1](1.png)
 
+  
 # **2. Requisitos**
 
 ## Hardware
