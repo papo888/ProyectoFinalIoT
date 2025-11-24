@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>ESP32 2WD Car - Panel de Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- MQTT.js desde CDN -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    /* Canvas responsivo */
+    #radarCanvas {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-900 text-slate-100">
+  <div class="max-w-6xl mx-auto py-6 px-4">
+    <!-- Header -->
+    <header class="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">
+          Panel de Control – Robot 2WD ESP32
+        </h1>
+        <p class="text-sm text-slate-300">
+          Control remoto por REST + Telemetría por MQTT (TLS) + Radar 2D de obstáculos.
+        </p>
+      </div>
+      <!-- Configuración de IP -->
+      <div class="flex flex-col md:flex-row md:items-center gap-2 bg-slate-800/70 rounded-xl px-3 py-2">
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          IP del Robot
+        </label>
+        <div class="flex gap-2 items-center">
+          <input
+            id="robotIpInput"
+            type="text"
+            class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            value="192.168.0.27"
+          />
+          <button
+            onclick="applyRobotIp()"
+            class="text-xs px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition"
+          >
+            Aplicar
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Layout principal -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Columna izquierda: Controles -->
+      <section class="space-y-4">
+        <!-- Estado Healthcheck -->
+        <div class="bg-slate-800/70 rounded-2xl p-4 shadow-md">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Estado del Robot</h2>
+            <button
+              onclick="fetchHealthcheck()"
+              class="text-xs px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 transition"
+            >
+              Actualizar
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p class="text-slate-400 text-xs uppercase">IP WiFi</p>
+              <p id="hc-ip" class="font-mono">-</p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-xs uppercase">MQTT</p>
+              <p id="hc-mqtt" class="font-mono">-</p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-xs uppercase">Movimiento activo</p>
+              <p id="hc-motion" class="font-mono">-</p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-xs uppercase">Topic telemetría</p>
+              <p id="hc-topic" class="font-mono text-xs break-all">
+                -
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controles de movimiento -->
+        <div class="bg-slate-800/70 rounded-2xl p-4 shadow-md space-y-4">
+          <h2 class="text-lg font-semibold mb-1">Control de movimiento</h2>
+          <p class="text-xs text-slate-300">
+            Usa los botones para enviar comandos al endpoint
+            <span class="font-mono">/api/v1/move</span>.
+          </p>
+
+          <!-- Velocidad -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs text-slate-300">
+              <span>Velocidad: <span id="speedLabel" class="font-mono">50%</span></span>
+              <span>0 - 100</span>
+            </div>
+            <input
+              id="speedInput"
+              type="range"
+              min="0"
+              max="100"
+              value="50"
+              class="w-full accent-emerald-500"
+              oninput="document.getElementById('speedLabel').innerText = this.value + '%';"
+            />
+          </div>
+
+          <!-- Duración -->
+          <div class="flex items-center gap-3 text-xs text-slate-300">
+            <div class="flex-1">
+              <label for="durationInput" class="block mb-1">
+                Duración (ms)
+              </label>
+              <input
+                id="durationInput"
+                type="number"
+                min="0"
+                max="5000"
+                value="1000"
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <p class="flex-1 text-xs">
+              Máx <span class="font-mono">5000 ms</span>. El ESP32 detiene el movimiento cuando se cumple el tiempo.
+            </p>
+          </div>
+
+          <!-- Botones de dirección -->
+          <div class="grid grid-cols-3 gap-3 mt-2">
+            <div></div>
+            <button
+              onclick="sendMove('forward')"
+              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition text-sm font-semibold"
+            >
+              ↑ Adelante
+            </button>
+            <div></div>
+
+            <button
+              onclick="sendMove('left')"
+              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition text-sm font-semibold"
+            >
+              ← Izquierda
+            </button>
+            <button
+              onclick="sendMove('stop')"
+              class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 transition text-sm font-semibold"
+            >
+              ⏹ Stop
+            </button>
+            <button
+              onclick="sendMove('right')"
+              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition text-sm font-semibold"
+            >
+              Derecha →
+            </button>
+
+            <div></div>
+            <button
+              onclick="sendMove('backward')"
+              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition text-sm font-semibold"
+            >
+              ↓ Atrás
+            </button>
+            <div></div>
+          </div>
+
+          <p id="lastCommand" class="mt-2 text-xs text-slate-300 font-mono">
+            Último comando: -
+          </p>
+        </div>
+
+        <!-- Log pequeño -->
+        <div class="bg-slate-800/70 rounded-2xl p-3 shadow-inner">
+          <h3 class="text-sm font-semibold mb-1">Log</h3>
+          <pre
+            id="logArea"
+            class="text-xs bg-slate-950/70 rounded-xl p-2 overflow-y-auto max-h-40 whitespace-pre-wrap"
+          >[GUI] Iniciada…</pre>
+        </div>
+      </section>
+
+      <!-- Columna derecha: Telemetría y Radar -->
+      <section class="space-y-4">
+        <!-- Tarjeta de telemetría -->
+        <div class="bg-slate-800/70 rounded-2xl p-4 shadow-md flex flex-col md:flex-row gap-4 items-center">
+          <div class="flex-1 space-y-2">
+            <h2 class="text-lg font-semibold">Telemetría – Distancia (MQTT)</h2>
+            <p class="text-xs text-slate-300">
+              Suscrito al tópico
+              <span class="font-mono text-emerald-300">esp32car/telemetry/distance</span>
+              en <span class="font-mono">test.mosquitto.org:8081</span> (WebSockets).
+            </p>
+            <div class="mt-2 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p class="text-slate-400 text-xs uppercase">Distancia actual</p>
+                <p id="telemetryDistance" class="text-2xl font-bold">
+                  -- cm
+                </p>
+              </div>
+              <div>
+                <p class="text-slate-400 text-xs uppercase">Último timestamp</p>
+                <p id="telemetryTs" class="font-mono text-xs">
+                  --
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="w-full md:w-40">
+            <!-- Pequeño indicador circular de estado MQTT -->
+            <div class="flex items-center gap-2 justify-center">
+              <span
+                id="mqttStatusDot"
+                class="inline-block w-3 h-3 rounded-full bg-red-500"
+              ></span>
+              <span id="mqttStatusText" class="text-xs text-slate-300">
+                MQTT: desconectado
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Radar 2D -->
+        <div class="bg-slate-800/70 rounded-2xl p-4 shadow-md">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-semibold">Radar 2D de obstáculos</h2>
+            <p class="text-xs text-slate-300">
+              Puntos <span class="text-emerald-400">🟢 lejos</span>,
+              <span class="text-yellow-300">🟡 medio</span>,
+              <span class="text-rose-400">🔴 cerca</span>.
+            </p>
+          </div>
+          <div class="aspect-square bg-slate-900 rounded-2xl p-3">
+            <canvas id="radarCanvas"></canvas>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ==========================
+    // Configuración global
+    // ==========================
+    let robotIp = "192.168.0.27"; // valor inicial, editable en el input
+    let mqttClient = null;
+    let latestDistance = null;
+
+    // Radar
+    const radarPoints = []; // {angle, distance}
+    const MAX_POINTS = 120;
+    let radarAngle = 0; // en grados
+
+    function log(msg) {
+      const area = document.getElementById("logArea");
+      const now = new Date().toLocaleTimeString();
+      area.textContent += `\n[${now}] ${msg}`;
+      area.scrollTop = area.scrollHeight;
+    }
+
+    function applyRobotIp() {
+      const ip = document.getElementById("robotIpInput").value.trim();
+      if (!ip) return;
+      robotIp = ip;
+      log(`IP del robot actualizada a ${robotIp}`);
+    }
+
+    // ==========================
+    // REST: healthcheck
+    // ==========================
+    async function fetchHealthcheck() {
+      try {
+        const url = `http://${robotIp}/api/v1/healthcheck`;
+        log(`GET ${url}`);
+        const res = await fetch(url);
+        if (!res.ok) {
+          log(`Error HTTP ${res.status} en healthcheck`);
+          return;
+        }
+        const data = await res.json();
+
+        document.getElementById("hc-ip").innerText = data.wifi_ip ?? "-";
+        document.getElementById("hc-mqtt").innerText = data.mqtt_connected ? "conectado" : "desconectado";
+        document.getElementById("hc-motion").innerText = data.motion_active ? "sí" : "no";
+        document.getElementById("hc-topic").innerText = data.telemetry_topic ?? "-";
+
+        log("Healthcheck OK");
+      } catch (err) {
+        console.error(err);
+        log("Error al llamar /healthcheck: " + err);
+      }
+    }
+
+    // ==========================
+    // REST: move
+    // ==========================
+    async function sendMove(direction) {
+      const speed = document.getElementById("speedInput").value;
+      const durationMs = document.getElementById("durationInput").value;
+
+      const url = `http://${robotIp}/api/v1/move`;
+      const body = new URLSearchParams();
+      body.append("direction", direction);
+      body.append("speed", speed);
+      body.append("duration_ms", durationMs);
+
+      document.getElementById("lastCommand").innerText =
+        `Último comando: direction=${direction}, speed=${speed}, duration_ms=${durationMs}`;
+      log(`POST ${url} direction=${direction} speed=${speed} duration_ms=${durationMs}`);
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body
+        });
+
+        const text = await res.text();
+        log(`Respuesta move: HTTP ${res.status} → ${text}`);
+      } catch (err) {
+        console.error(err);
+        log("Error al llamar /move: " + err);
+      }
+    }
+
+    // ==========================
+    // MQTT (WebSockets a test.mosquitto.org)
+    // ==========================
+    function setupMqtt() {
+      const mqttStatusDot = document.getElementById("mqttStatusDot");
+      const mqttStatusText = document.getElementById("mqttStatusText");
+
+      const url = "wss://test.mosquitto.org:8081/mqtt";
+      log(`Conectando a MQTT WebSocket: ${url}`);
+
+      mqttClient = mqtt.connect(url);
+
+      mqttClient.on("connect", function () {
+        log("MQTT conectado");
+        mqttStatusDot.classList.remove("bg-red-500");
+        mqttStatusDot.classList.add("bg-emerald-500");
+        mqttStatusText.textContent = "MQTT: conectado";
+
+        const topic = "esp32car/telemetry/distance";
+        mqttClient.subscribe(topic, function (err) {
+          if (!err) {
+            log(`Suscrito a ${topic}`);
+          } else {
+            log("Error al suscribir MQTT: " + err);
+          }
+        });
+      });
+
+      mqttClient.on("reconnect", function () {
+        log("MQTT intentando reconectar…");
+        mqttStatusDot.classList.remove("bg-emerald-500");
+        mqttStatusDot.classList.add("bg-yellow-400");
+        mqttStatusText.textContent = "MQTT: reconectando…";
+      });
+
+      mqttClient.on("close", function () {
+        log("MQTT desconectado");
+        mqttStatusDot.classList.remove("bg-emerald-500", "bg-yellow-400");
+        mqttStatusDot.classes;
+        mqttStatusDot.classList.add("bg-red-500");
+        mqttStatusText.textContent = "MQTT: desconectado";
+      });
+
+      mqttClient.on("error", function (err) {
+        log("Error MQTT: " + err);
+      });
+
+      mqttClient.on("message", function (topic, message) {
+        try {
+          const payload = JSON.parse(message.toString());
+          const d = payload.distance;
+          const ts = payload.ts;
+
+          latestDistance = d;
+          if (d === null || Number.isNaN(d)) {
+            document.getElementById("telemetryDistance").innerText = "-- cm";
+          } else {
+            document.getElementById("telemetryDistance").innerText = d.toFixed(2) + " cm";
+          }
+
+          if (ts !== undefined) {
+            const date = new Date(ts);
+            if (!isNaN(date.getTime())) {
+              document.getElementById("telemetryTs").innerText = date.toLocaleTimeString();
+            } else {
+              document.getElementById("telemetryTs").innerText = String(ts);
+            }
+          }
+
+          // Actualizar radar con este punto
+          if (d !== null && !Number.isNaN(d)) {
+            addRadarPoint(d);
+          }
+        } catch (e) {
+          console.error("Error parseando telemetría:", e);
+        }
+      });
+    }
+
+    // ==========================
+    // Radar 2D
+    // ==========================
+    function addRadarPoint(distanceCm) {
+      // Limitamos a 400 cm como en el código del ESP
+      const clamped = Math.max(0, Math.min(distanceCm, 400));
+      radarAngle = (radarAngle + 5) % 360; // giramos 5°  cada nuevo punto
+
+      radarPoints.push({ angle: radarAngle, distance: clamped });
+
+      if (radarPoints.length > MAX_POINTS) {
+        radarPoints.shift();
+      }
+    }
+
+    function drawRadar() {
+      const canvas = document.getElementById("radarCanvas");
+      if (!canvas) return;
+
+      // Hacer canvas responsivo al tamaño del contenedor
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const size = Math.min(rect.width, rect.height);
+      canvas.width = size;
+      canvas.height = size;
+
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxR = Math.min(cx, cy) - 8; // margen
+
+      // Fondo
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#020617"; // slate-950
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid circular
+      ctx.strokeStyle = "#1e293b"; // slate-800
+      ctx.lineWidth = 1;
+
+      const rings = 4;
+      for (let i = 1; i <= rings; i++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, (maxR * i) / rings, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+
+      // Líneas radiales
+      for (let angle = 0; angle < 360; angle += 45) {
+        const rad = (angle * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + maxR * Math.cos(rad), cy + maxR * Math.sin(rad));
+        ctx.stroke();
+      }
+
+      // Eje frontal (0°) marcado
+      ctx.strokeStyle = "#38bdf8"; // sky-400
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + maxR, cy);
+      ctx.stroke();
+
+      // Dibujar puntos
+      for (const p of radarPoints) {
+        const dNorm = p.distance / 400; // 0..1
+        const r = dNorm * maxR;
+
+        const rad = (p.angle * Math.PI) / 180;
+        const x = cx + r * Math.cos(rad);
+        const y = cy + r * Math.sin(rad);
+
+        // Color por distancia
+        let color = "#22c55e"; // verde
+        if (p.distance < 30) {
+          color = "#f97373"; // rojo
+        } else if (p.distance < 80) {
+          color = "#eab308"; // amarillo
+        }
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+
+      // Haz "sweep" actual
+      ctx.strokeStyle = "rgba(56,189,248,0.5)"; // sky-400 con alpha
+      const sweepRad = (radarAngle * Math.PI) / 180;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + maxR * Math.cos(sweepRad), cy + maxR * Math.sin(sweepRad));
+      ctx.stroke();
+
+      requestAnimationFrame(drawRadar);
+    }
+
+    // ==========================
+    // Inicialización
+    // ==========================
+    window.addEventListener("load", () => {
+      log("Cargando GUI…");
+      // Healthcheck inicial
+      fetchHealthcheck();
+      // MQTT
+      setupMqtt();
+      // Radar
+      requestAnimationFrame(drawRadar);
+    });
+  </script>
+</body>
+</html>
