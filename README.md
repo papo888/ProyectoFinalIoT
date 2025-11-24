@@ -261,19 +261,3 @@ En `settings.h`:
 * Usa pilas nuevas o recargables NiMH.
 
 ---
-
-# **10. Créditos**
-
-Proyecto realizado por Juan Pablo Parrado.
-Asistencia, depuración y diseño del sistema: ChatGPT.
-
----
-
-Si quieres, te genero también:
-
-* **README EN VERSIÓN CORTA PARA ENTREGAR A PROFESOR**
-* **README con imágenes**
-* **README bilingüe (ES/EN)**
-* **README con diagrama de arquitectura**
-
-Solo dime cuál quieres.
